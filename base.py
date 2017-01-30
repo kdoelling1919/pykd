@@ -4,11 +4,11 @@ Create useful tools for doing things in python
 
 """
 
-from matplotlib import plot as plt
+import matplotlib.pyplot as plt
 import numpy as np
 
 
-def bar(x=None,y=None,**kwargs):
+def bar(x=None,y=None,yerr=None,**kwargs):
     # checking y as an input
     if y is None:
         raise TypeError('Y must have values for us to plot.')
@@ -18,6 +18,11 @@ def bar(x=None,y=None,**kwargs):
         raise ValueError('y must have no more than 2 dimensions, instead it has {0}'.format(len(y.shape)))
     elif len(y.shape) < 2:
         y = y[:,None]
+    # checking yerr
+    if yerr is None:
+        yerr is np.zeros(y.shape)
+
+    assert np.array_equal(yerr.shape,y.shape)
 
     # checking input for x
     if x is None:
@@ -46,9 +51,14 @@ def bar(x=None,y=None,**kwargs):
     else:
         width = kwargs.pop('width')
 
+    if 'color' in kwargs:
+        color = kwargs.pop('color')
+        assert len(color) == y.shape[0]
+
+
     h = list()
     for num,group in enumerate(y):
-        ob=plt.bar(x+num*width,y,width=width,**kwargs)
+        ob=plt.bar(x+num*width,group,yerr=yerr[num],width=width,color=color[num],**kwargs)
         h.append(ob)
 
     tick_add = (grp_space-grp_margin)/2.0
@@ -57,5 +67,25 @@ def bar(x=None,y=None,**kwargs):
 
     ax.set_xticks(xticks)
     ax.set_xticklabels(x_)
+    ax.set_xlim([x[0]-.5*width,x[-1]+(num+1.5)*width])
 
     return ax,h
+
+def axes_fontsize(ax=None,fs=12):
+    from matplotlib import axes
+    # check axes input
+    if ax is None:
+        ax = plt.gca()
+    elif not isinstance(ax,axes.Axes):
+        raise TypeError('Input must be an Axes handle')
+
+    # check fontsize
+    if not isinstance(fs,int):
+        raise TypeError('fs should be an int. Instead, it was {}'.format(type(fs)))
+    elif fs <= 0:
+        raise ValueError('fs should be positive. Instead, it was {}'.format(fs))
+
+    ax=plt.gca()
+    for item in ([ax.title, ax.xaxis.label, ax.yaxis.label] +
+                ax.get_xticklabels() + ax.get_yticklabels()):
+                item.set_fontsize(fs)
