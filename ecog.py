@@ -3,13 +3,14 @@
 functions for ECoG data
 
 """
-import numpy as np
-from mne import create_info
-from mne.channels import DigMontage
 
 
 def info_from_montage(filename, raw_chs=None, remove_depth=False,
                       change_ch_names=True, return_montage=False):
+    import numpy as np
+    from mne import create_info
+    from mne.channels import DigMontage
+
     montage = list()
     with open(filename, 'r') as f:
         for line in f:
