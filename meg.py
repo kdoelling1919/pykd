@@ -3,9 +3,10 @@
 Creating functions for basic MNE processing
 
 """
+import numpy as np
 
 
-def epochs_from_raw(raw, trigs, tlims, ids, offset=0, mwrep=False, **kwargs):
+def epochs_from_raw(raw, trigs, tlims, ids, mwrep=False, **kwargs):
     """
 
     This function reads in raw data and outputs an Epochs class based on
@@ -15,9 +16,9 @@ def epochs_from_raw(raw, trigs, tlims, ids, offset=0, mwrep=False, **kwargs):
     trigs: list of trigger values to include in events
     offset: either a scalar, a set amount to offset the trigger, or array_like,
             the list must be as long as the number of events
+    ids: The names for each event type
 
     """
-    import numpy as np
     from mne import find_events, pick_types, Epochs
     if type(trigs) is not list:
         TypeError("Trigger must be of type list, not {}".format(type(trigs)))
@@ -30,10 +31,6 @@ def epochs_from_raw(raw, trigs, tlims, ids, offset=0, mwrep=False, **kwargs):
     if mwrep:
         if len(events) == 141:
             events = np.delete(events, 0, axis=0)
-
-    # turn NaNs into 0s. Will have to keep track outside the function
-    offset[np.isnan(offset)] = 0
-    events[:, 2] = events[:, 2] + offset
 
     if len(trigs) is not len(ids):
         raise ValueError(("ids should have same length as trigs. Currently, {}"
@@ -53,9 +50,6 @@ def thresh_epochs(epochs, thresh, baseline=(None, None), toi=(None, None)):
     detect the onset of muscle activity.
 
     """
-
-    import numpy as np
-
     # check that epochs is an instance of MNE's epochs
     from mne import BaseEpochs
     if not isinstance(epochs, BaseEpochs):
@@ -108,8 +102,13 @@ def thresh_epochs(epochs, thresh, baseline=(None, None), toi=(None, None)):
 
 
 def trigs_from_raw(raw_data, raw_trigs):
+    """
+
+        Designed for yokogawa system.
+    """
     from mne.io import Raw, RawArray
     import os.path as op
+    from warnings import warn
 
     if isinstance(raw_data, str):
         if op.exists(raw_data):
@@ -131,10 +130,54 @@ def trigs_from_raw(raw_data, raw_trigs):
         raise TypeError('raw_trigs must be either an instance of Raw or path'
                         'to raw file.')
 
+    # ensure that the sampling rate is the same across both
+    if raw_data.info['sfreq'] != raw_trigs.info['sfreq']:
+        warn(('Sampling rates were not the same, data is {} but triggers'
+             ' are {}. Resampling to the lower option now').format(
+             raw_data.info['sfreq'], raw_trigs.info['sfreq']))
+        if raw_trigs.info['sfreq'] > raw_data.info['sfreq']:
+            raw_trigs.resample(raw_data.info['sfreq'])
+        else:
+            raw_data.resample(raw_trigs.info['sfreq'])
+
     # get the cleaned data and the raw_data with extra channels
     cldat = raw_data[:][0]
     rwdat = raw_trigs[:][0]
     # put the cleaned data into the raw data
-    rwdat[:157, :] = cldat.copy()
+    rwdat[:157, :] = cldat[:157, :].copy()
     # make new raw array with info from the more informative
     return RawArray(rwdat, raw_trigs.info, first_samp=0, verbose=False)
+
+
+def evoked_movie(evoked, times=None, interval=200, vtime=None):
+    """
+    Take evoked array and make into a movieself.
+    evoked = evoked data to be animated
+    times = the time point of each successive frame
+    interval = the time in ms between each frame.
+    vtime = time in seconds to base colorbar on
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation
+
+    if times is None:
+        times = evoked.times
+    # get colorbar limits by time
+    if vtime is None:
+        t_ind = np.in1d(evoked.times, times)
+    else:
+        t_ind = np.abs(evoked.times - vtime).argmin()
+    # get max abs based on the acceptable times
+    vmax = np.abs(evoked.data[:, t_ind]).max()*10**15
+    vmin = -vmax
+
+    fig, ax = plt.subplots()
+
+    def animate(t):
+        c = evoked.plot_topomap(times=t, time_unit='s', size=2, colorbar=False,
+                                axes=ax, contours=0, vmin=vmin, vmax=vmax,
+                                show=False)
+        return iter(c.axes[0].get_children())
+
+    ani = FuncAnimation(fig, animate, times, interval=interval)
+    return ani
